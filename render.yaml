@@ -1,0 +1,18 @@
+services:
+  - type: web
+    name: customer-excel-api
+    runtime: docker
+    dockerfilePath: Dockerfile
+    envVars:
+      - key: ASPNETCORE_ENVIRONMENT
+        value: Production
+      - key: DefaultConnection
+        fromDatabase:
+          name: customer-db
+          property: connectionString
+    healthCheckPath: /swagger/v1/swagger.json
+
+databases:
+  - name: customer-db
+    plan: free
+    databaseName: customer_excel_api_db
