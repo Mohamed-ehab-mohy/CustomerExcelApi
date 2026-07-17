@@ -52,7 +52,15 @@ app.UseExceptionHandler(errorApp =>
 using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-    db.Database.EnsureCreated();
+    db.Database.ExecuteSqlRaw(@"
+        CREATE TABLE IF NOT EXISTS ""Customers"" (
+            ""Id"" uuid NOT NULL,
+            ""Name"" character varying(200) NOT NULL,
+            ""Email"" character varying(200) NOT NULL,
+            ""Address"" character varying(500) NOT NULL,
+            CONSTRAINT ""PK_Customers"" PRIMARY KEY (""Id"")
+        );
+    ");
 }
 
 app.Run();
