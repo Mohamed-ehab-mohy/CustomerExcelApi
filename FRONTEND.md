@@ -86,6 +86,20 @@ Content-Type: application/json
 
 ---
 
+## CORS
+
+The API supports **cross-origin requests** from any frontend. No special configuration is needed.
+
+- **Preflight (OPTIONS)** requests are handled automatically by the server
+- **Any origin** is allowed (localhost, production domains, etc.)
+- **Any HTTP method** is allowed (GET, POST, OPTIONS)
+- **Any request header** is allowed (Content-Type, Authorization, etc.)
+- **`Content-Disposition`** header is exposed for download filename access
+
+This means you can call the API from any frontend (localhost, Vercel, Netlify, etc.) without CORS issues.
+
+---
+
 ## Import Endpoint
 
 ### `POST /api/customers/import`
@@ -1012,7 +1026,18 @@ export_excel(['Name', 'Email', 'City'], 'output.xlsx')
 
 ### Q: How do I handle CORS errors?
 
-**A:** The API allows all origins (`AllowedHosts: *`). If you still get CORS errors, check your browser's developer console for the actual error.
+**A:** The API is configured with full CORS support. It accepts requests from **any origin**, with **any HTTP method** (GET, POST, OPTIONS, etc.), and **any headers**. The `Content-Disposition` header is also exposed so frontends can read the filename from export responses.
+
+| CORS Setting | Value |
+|--------------|-------|
+| `Access-Control-Allow-Origin` | `*` |
+| `Access-Control-Allow-Methods` | `*` (all methods) |
+| `Access-Control-Allow-Headers` | `*` (all headers) |
+| `Access-Control-Expose-Headers` | `Content-Disposition` |
+
+**Preflight requests (OPTIONS)** are handled automatically by the server. No special configuration is needed on the frontend.
+
+If you still get CORS errors, check your browser's developer console for the actual error.
 
 ### Q: Can I use this API from a mobile app?
 
