@@ -176,9 +176,10 @@ Excel Row
 ```
 
 **Deduplication Rules:**
-- Same `Name + Email` = same customer (only 1 record created)
+- Same `Name + Email` = same customer (only 1 record created, even across multiple imports)
 - Same customer + same `Street + City + Country` = same address (only 1 record created)
-- Each Excel row with a `ProductName` creates a NEW order
+- Same customer + same `ProductName + Quantity + Price + OrderDate` = same order (only 1 record created)
+- **All deduplication checks the database** — re-importing the same file returns `inserted: 0`
 
 **Example:**
 
@@ -372,6 +373,7 @@ Requested Columns
 ### Column Name Rules
 
 - **Case-insensitive**: `name`, `NAME`, `Name` all work
+- **Display names accepted**: `Product Name` and `ProductName` both work (same for `Order Date` / `OrderDate`)
 - **Spaces in display**: `ProductName` in API = `Product Name` in Excel header
 - **Date format**: `OrderDate` accepts `YYYY-MM-DD` format
 - **Invalid columns are silently ignored** in export
@@ -1002,7 +1004,7 @@ export_excel(['Name', 'Email', 'City'], 'output.xlsx')
 
 ### Q: What happens if I import the same file twice?
 
-**A:** Customers are **deduplicated** by `Name + Email`. Addresses are deduplicated per customer. But Orders are **NOT** deduplicated - each import creates new orders.
+**A:** All data is **fully deduplicated** — customers, addresses, AND orders. Re-importing the same file returns `inserted: 0` because all records already exist in the database. This is safe — you can import the same file multiple times without creating duplicates.
 
 ### Q: What Excel format is supported?
 
@@ -1042,3 +1044,7 @@ If you still get CORS errors, check your browser's developer console for the act
 ### Q: Can I use this API from a mobile app?
 
 **A:** Yes! It's a standard REST API. Use any HTTP client (fetch, axios, retrofit, Alamofire, etc.).
+
+### Q: Does data persist if the server restarts?
+
+**A:** Yes. Data persists across server restarts and deployments. The API uses EF Core migrations which only create tables if they don't exist — no data is ever dropped.

@@ -109,17 +109,19 @@ The Excel file must have a **header row** (row 1) with column names. Column name
 
 **Columns mapping:**
 
-| Excel Header | Maps To Table | Maps To Column | Required |
-|-------------|--------------|----------------|----------|
-| `Name` | Customers | Name | Yes |
-| `Email` | Customers | Email | Yes |
-| `Street` | Addresses | Street | No |
-| `City` | Addresses | City | No |
-| `Country` | Addresses | Country | No |
-| `ProductName` | Orders | ProductName | No |
-| `Quantity` | Orders | Quantity | No |
-| `Price` | Orders | Price | No |
-| `OrderDate` | Orders | OrderDate | No |
+Both internal names (`ProductName`) and display names (`Product Name`) are accepted.
+
+| Excel Header | Internal Name | Maps To Table | Maps To Column | Required |
+|-------------|---------------|--------------|----------------|----------|
+| `Name` | `Name` | Customers | Name | Yes |
+| `Email` | `Email` | Customers | Email | Yes |
+| `Street` | `Street` | Addresses | Street | No |
+| `City` | `City` | Addresses | City | No |
+| `Country` | `Country` | Addresses | Country | No |
+| `Product Name` | `ProductName` | Orders | ProductName | No |
+| `Quantity` | `Quantity` | Orders | Quantity | No |
+| `Price` | `Price` | Orders | Price | No |
+| `Order Date` | `OrderDate` | Orders | OrderDate | No |
 
 **Example Excel layout:**
 
@@ -134,7 +136,8 @@ The Excel file must have a **header row** (row 1) with column names. Column name
 
 - Rows with the same Name+Email are treated as the **same customer** (deduplicated)
 - Addresses are deduplicated per customer (same Street+City+Country = one address)
-- Each row with a ProductName creates a **new order**
+- Orders are deduplicated per customer (same ProductName+Quantity+Price+OrderDate = one order)
+- **All deduplication checks the database** — re-importing the same file returns `inserted: 0`
 - In the example above: 3 Customers, 3 Addresses, 4 Orders = 10 database records
 
 #### Response
@@ -215,7 +218,7 @@ Export customers as Excel file (.xlsx) with **dynamic column selection**. The fr
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `columns` | string[] | Yes | Column names to include in export |
+| `columns` | string[] | Yes | Column names to include in export (accepts both internal and display names) |
 
 #### Available Columns
 
@@ -236,12 +239,12 @@ Export customers as Excel file (.xlsx) with **dynamic column selection**. The fr
 
 **From Orders:**
 
-| Column Name | Description |
-|-------------|-------------|
-| `ProductName` | Product name |
-| `Quantity` | Order quantity |
-| `Price` | Unit price |
-| `OrderDate` | Order date (YYYY-MM-DD) |
+| Column Name | Display Name | Description |
+|-------------|-------------|-------------|
+| `ProductName` | `Product Name` | Product name |
+| `Quantity` | `Quantity` | Order quantity |
+| `Price` | `Price` | Unit price |
+| `OrderDate` | `Order Date` | Order date (YYYY-MM-DD) |
 
 #### Dynamic Column Selection Examples
 
@@ -592,6 +595,31 @@ function CustomerManager() {
 
 export default CustomerManager;
 ```
+
+---
+
+## CORS
+
+The API supports **cross-origin requests** from any frontend. No special configuration is needed.
+
+| Setting | Value |
+|---------|-------|
+| `Access-Control-Allow-Origin` | `*` |
+| `Access-Control-Allow-Methods` | `*` (all methods) |
+| `Access-Control-Allow-Headers` | `*` (all headers) |
+| `Access-Control-Expose-Headers` | `Content-Disposition` |
+
+- **Preflight (OPTIONS)** requests are handled automatically by the server
+- **Any origin** is allowed (localhost, production domains, etc.)
+- **Any HTTP method** is allowed (GET, POST, OPTIONS)
+- **Any request header** is allowed (Content-Type, Authorization, etc.)
+- **`Content-Disposition`** header is exposed so frontends can read the download filename
+
+---
+
+## Data Persistence
+
+Data persists across server restarts and deployments. The API uses EF Core migrations (`Database.Migrate()`) which only creates tables if they don't exist — **no data is ever dropped**.
 
 ---
 
