@@ -42,7 +42,7 @@ public sealed class SignalRNotificationProvider : INotificationProvider
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "SignalR failed for User {UserId}", message.UserId);
+            _logger.LogWarning(ex, "SignalR failed for User {UserId}, Reminder {ReminderId}", message.UserId, message.ReminderId);
             return false;
         }
     }
