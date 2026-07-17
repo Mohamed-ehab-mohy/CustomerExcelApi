@@ -54,6 +54,8 @@ public sealed class CustomerBulkRepository : ICustomerBulkRepository
                 await importer.CompleteAsync(cancellationToken);
             }
 
+            var addressSet = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
             await using (var importer = connection.BeginBinaryImport(CopyAddresses))
             {
                 foreach (var row in rows)
@@ -66,6 +68,10 @@ public sealed class CustomerBulkRepository : ICustomerBulkRepository
 
                     var key = $"{row.Name}|{row.Email}";
                     if (!customerMap.TryGetValue(key, out var customerId))
+                        continue;
+
+                    var addrKey = $"{customerId}|{row.Street}|{row.City}|{row.Country}";
+                    if (!addressSet.Add(addrKey))
                         continue;
 
                     await importer.StartRowAsync(cancellationToken);

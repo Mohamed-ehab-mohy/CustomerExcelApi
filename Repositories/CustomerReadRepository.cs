@@ -15,23 +15,21 @@ public sealed class CustomerReadRepository : ICustomerReadRepository
         IReadOnlyList<string> columns,
         CancellationToken cancellationToken = default)
     {
-        var query = _db.Customers
-            .AsNoTracking()
-            .SelectMany(c => c.Orders.DefaultIfEmpty(),
-                (c, o) => new { c, o })
-            .SelectMany(x => x.c.Addresses.DefaultIfEmpty(),
-                (x, a) => new CustomerExportRow
-                {
-                    Name = x.c.Name,
-                    Email = x.c.Email,
-                    Street = a != null ? a.Street : string.Empty,
-                    City = a != null ? a.City : string.Empty,
-                    Country = a != null ? a.Country : string.Empty,
-                    ProductName = x.o != null ? x.o.ProductName : string.Empty,
-                    Quantity = x.o != null ? x.o.Quantity : 0,
-                    Price = x.o != null ? x.o.Price : 0,
-                    OrderDate = x.o != null ? x.o.OrderDate : DateTime.MinValue
-                });
+        var query = from c in _db.Customers.AsNoTracking()
+                    from a in c.Addresses.DefaultIfEmpty()
+                    from o in c.Orders.DefaultIfEmpty()
+                    select new CustomerExportRow
+                    {
+                        Name = c.Name,
+                        Email = c.Email,
+                        Street = a != null ? a.Street : string.Empty,
+                        City = a != null ? a.City : string.Empty,
+                        Country = a != null ? a.Country : string.Empty,
+                        ProductName = o != null ? o.ProductName : string.Empty,
+                        Quantity = o != null ? o.Quantity : 0,
+                        Price = o != null ? o.Price : 0,
+                        OrderDate = o != null ? o.OrderDate : DateTime.MinValue
+                    };
 
         return await query.ToListAsync(cancellationToken);
     }
