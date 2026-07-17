@@ -61,47 +61,10 @@ app.UseSwaggerUI();
 
 app.MapControllers();
 
-if (app.Environment.IsDevelopment())
+using (var scope = app.Services.CreateScope())
 {
-    using (var scope = app.Services.CreateScope())
-    {
-        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-        db.Database.ExecuteSqlRaw(@"
-            DROP TABLE IF EXISTS ""Orders"" CASCADE;
-            DROP TABLE IF EXISTS ""Addresses"" CASCADE;
-            DROP TABLE IF EXISTS ""Customers"" CASCADE;
-
-            CREATE TABLE ""Customers"" (
-                ""Id"" uuid NOT NULL,
-                ""Name"" character varying(200) NOT NULL,
-                ""Email"" character varying(200) NOT NULL,
-                CONSTRAINT ""PK_Customers"" PRIMARY KEY (""Id"")
-            );
-
-            CREATE TABLE ""Addresses"" (
-                ""Id"" uuid NOT NULL,
-                ""CustomerId"" uuid NOT NULL,
-                ""Street"" character varying(300) NOT NULL,
-                ""City"" character varying(100) NOT NULL,
-                ""Country"" character varying(100) NOT NULL,
-                CONSTRAINT ""PK_Addresses"" PRIMARY KEY (""Id""),
-                CONSTRAINT ""FK_Addresses_Customers_CustomerId"" FOREIGN KEY (""CustomerId"")
-                    REFERENCES ""Customers"" (""Id"") ON DELETE CASCADE
-            );
-
-            CREATE TABLE ""Orders"" (
-                ""Id"" uuid NOT NULL,
-                ""CustomerId"" uuid NOT NULL,
-                ""ProductName"" character varying(200) NOT NULL,
-                ""Quantity"" integer NOT NULL,
-                ""Price"" numeric(18,2) NOT NULL,
-                ""OrderDate"" date NOT NULL,
-                CONSTRAINT ""PK_Orders"" PRIMARY KEY (""Id""),
-                CONSTRAINT ""FK_Orders_Customers_CustomerId"" FOREIGN KEY (""CustomerId"")
-                    REFERENCES ""Customers"" (""Id"") ON DELETE CASCADE
-            );
-        ");
-    }
+    var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+    db.Database.Migrate();
 }
 
 app.Run();
