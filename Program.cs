@@ -70,7 +70,34 @@ app.MapControllers();
 using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-    db.Database.Migrate();
+    db.Database.ExecuteSqlRaw(@"
+        CREATE TABLE IF NOT EXISTS ""Reminders"" (
+            ""Id"" uuid NOT NULL,
+            ""UserId"" uuid NOT NULL,
+            ""Title"" character varying(200) NOT NULL,
+            ""Message"" character varying(1000) NOT NULL,
+            ""MeetingTime"" timestamp with time zone NOT NULL,
+            ""NextReminderTime"" timestamp with time zone NOT NULL,
+            ""NotifyBeforeMinutes"" integer NOT NULL,
+            ""RepeatEveryMinutes"" integer NOT NULL,
+            ""RetryCount"" integer NOT NULL,
+            ""MaxRetryCount"" integer NOT NULL,
+            ""Status"" integer NOT NULL,
+            ""CreatedAt"" timestamp with time zone NOT NULL,
+            ""UpdatedAt"" timestamp with time zone NOT NULL,
+            ""ReadAt"" timestamp with time zone NULL,
+            CONSTRAINT ""PK_Reminders"" PRIMARY KEY (""Id"")
+        );
+
+        CREATE INDEX IF NOT EXISTS ""IX_Reminders_Status_NextReminderTime""
+            ON ""Reminders"" (""Status"", ""NextReminderTime"");
+
+        CREATE INDEX IF NOT EXISTS ""IX_Reminders_UserId""
+            ON ""Reminders"" (""UserId"");
+
+        CREATE INDEX IF NOT EXISTS ""IX_Reminders_UserId_Status""
+            ON ""Reminders"" (""UserId"", ""Status"");
+    ");
 }
 
 app.Run();
