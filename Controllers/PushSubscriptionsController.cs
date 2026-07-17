@@ -1,5 +1,7 @@
+using System.Text.Json;
 using CustomerExcelApi.Data;
 using CustomerExcelApi.Entities;
+using CustomerExcelApi.Services.Notifications;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 
@@ -10,8 +12,13 @@ namespace CustomerExcelApi.Controllers;
 public sealed class PushSubscriptionsController : ControllerBase
 {
     private readonly AppDbContext _db;
+    private readonly INotificationService _notificationService;
 
-    public PushSubscriptionsController(AppDbContext db) => _db = db;
+    public PushSubscriptionsController(AppDbContext db, INotificationService notificationService)
+    {
+        _db = db;
+        _notificationService = notificationService;
+    }
 
     [HttpPost]
     public async Task<IActionResult> Subscribe(
@@ -77,6 +84,29 @@ public sealed class PushSubscriptionsController : ControllerBase
             .ToListAsync(cancellationToken);
 
         return Ok(subscriptions);
+    }
+
+    [HttpPost("test")]
+    public async Task<IActionResult> TestPush(CancellationToken cancellationToken)
+    {
+        var userId = GetUserId();
+
+        var hasSubscription = await _db.PushSubscriptions
+            .AnyAsync(s => s.UserId == userId, cancellationToken);
+
+        if (!hasSubscription)
+            return BadRequest(new { error = "No push subscription found. Subscribe first." });
+
+        await _notificationService.SendAsync(new NotificationMessage
+        {
+            UserId = userId,
+            Title = "Test Notification",
+            Body = "If you see this, WebPush is working!",
+            ReminderId = Guid.NewGuid(),
+            MeetingTime = DateTime.UtcNow
+        }, cancellationToken);
+
+        return Ok(new { message = "Test notification sent" });
     }
 
     private Guid GetUserId()
