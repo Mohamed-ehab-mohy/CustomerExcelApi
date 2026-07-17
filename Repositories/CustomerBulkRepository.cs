@@ -11,19 +11,20 @@ public sealed class CustomerBulkRepository : ICustomerBulkRepository
 {
     private readonly AppDbContext _db;
 
-    private const string CopyCommand =
-        """
-        COPY "Customers" ("Id", "Name", "Email", "Address")
-        FROM STDIN (FORMAT BINARY)
-        """;
+    private const string CopyCustomers =
+        """COPY "Customers" ("Id", "Name", "Email") FROM STDIN (FORMAT BINARY)""";
+    private const string CopyAddresses =
+        """COPY "Addresses" ("Id", "CustomerId", "Street", "City", "Country") FROM STDIN (FORMAT BINARY)""";
+    private const string CopyOrders =
+        """COPY "Orders" ("Id", "CustomerId", "ProductName", "Quantity", "Price", "OrderDate") FROM STDIN (FORMAT BINARY)""";
 
     public CustomerBulkRepository(AppDbContext db) => _db = db;
 
     public async Task<int> BulkInsertAsync(
-        IReadOnlyList<Customer> customers,
+        IReadOnlyList<CustomerImportRow> rows,
         CancellationToken cancellationToken = default)
     {
-        if (customers.Count == 0) return 0;
+        if (rows.Count == 0) return 0;
 
         var connection = (NpgsqlConnection)_db.Database.GetDbConnection();
         var wasClosed = connection.State == System.Data.ConnectionState.Closed;
@@ -33,20 +34,76 @@ public sealed class CustomerBulkRepository : ICustomerBulkRepository
 
         try
         {
-            await using var importer = connection.BeginBinaryImport(CopyCommand);
+            var customerMap = new Dictionary<string, Guid>(StringComparer.OrdinalIgnoreCase);
 
-            foreach (var c in customers)
+            await using (var importer = connection.BeginBinaryImport(CopyCustomers))
             {
-                cancellationToken.ThrowIfCancellationRequested();
-                await importer.StartRowAsync(cancellationToken);
-                await importer.WriteAsync(c.Id, NpgsqlDbType.Uuid, cancellationToken);
-                await importer.WriteAsync(c.Name, NpgsqlDbType.Varchar, cancellationToken);
-                await importer.WriteAsync(c.Email, NpgsqlDbType.Varchar, cancellationToken);
-                await importer.WriteAsync(c.Address, NpgsqlDbType.Varchar, cancellationToken);
+                foreach (var row in rows)
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+                    var key = $"{row.Name}|{row.Email}";
+                    if (!customerMap.ContainsKey(key))
+                    {
+                        customerMap[key] = Guid.NewGuid();
+                        await importer.StartRowAsync(cancellationToken);
+                        await importer.WriteAsync(customerMap[key], NpgsqlDbType.Uuid, cancellationToken);
+                        await importer.WriteAsync(row.Name, NpgsqlDbType.Varchar, cancellationToken);
+                        await importer.WriteAsync(row.Email, NpgsqlDbType.Varchar, cancellationToken);
+                    }
+                }
+                await importer.CompleteAsync(cancellationToken);
             }
 
-            var rowCount = await importer.CompleteAsync(cancellationToken);
-            return (int)rowCount;
+            await using (var importer = connection.BeginBinaryImport(CopyAddresses))
+            {
+                foreach (var row in rows)
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+                    if (string.IsNullOrWhiteSpace(row.Street) &&
+                        string.IsNullOrWhiteSpace(row.City) &&
+                        string.IsNullOrWhiteSpace(row.Country))
+                        continue;
+
+                    var key = $"{row.Name}|{row.Email}";
+                    if (!customerMap.TryGetValue(key, out var customerId))
+                        continue;
+
+                    await importer.StartRowAsync(cancellationToken);
+                    await importer.WriteAsync(Guid.NewGuid(), NpgsqlDbType.Uuid, cancellationToken);
+                    await importer.WriteAsync(customerId, NpgsqlDbType.Uuid, cancellationToken);
+                    await importer.WriteAsync(row.Street, NpgsqlDbType.Varchar, cancellationToken);
+                    await importer.WriteAsync(row.City, NpgsqlDbType.Varchar, cancellationToken);
+                    await importer.WriteAsync(row.Country, NpgsqlDbType.Varchar, cancellationToken);
+                }
+                await importer.CompleteAsync(cancellationToken);
+            }
+
+            int orderCount = 0;
+            await using (var importer = connection.BeginBinaryImport(CopyOrders))
+            {
+                foreach (var row in rows)
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+                    if (string.IsNullOrWhiteSpace(row.ProductName))
+                        continue;
+
+                    var key = $"{row.Name}|{row.Email}";
+                    if (!customerMap.TryGetValue(key, out var customerId))
+                        continue;
+
+                    await importer.StartRowAsync(cancellationToken);
+                    await importer.WriteAsync(Guid.NewGuid(), NpgsqlDbType.Uuid, cancellationToken);
+                    await importer.WriteAsync(customerId, NpgsqlDbType.Uuid, cancellationToken);
+                    await importer.WriteAsync(row.ProductName, NpgsqlDbType.Varchar, cancellationToken);
+                    await importer.WriteAsync(row.Quantity, NpgsqlDbType.Integer, cancellationToken);
+                    await importer.WriteAsync(row.Price, NpgsqlDbType.Numeric, cancellationToken);
+                    await importer.WriteAsync(row.OrderDate, NpgsqlDbType.Date, cancellationToken);
+                    orderCount++;
+                }
+                await importer.CompleteAsync(cancellationToken);
+            }
+
+            return customerMap.Count + orderCount;
         }
         finally
         {

@@ -20,10 +20,10 @@ public sealed class ExportCustomersHandler
         ExportCustomersQuery query,
         CancellationToken cancellationToken = default)
     {
-        var customers = await _readRepository.GetByColumnsAsync(
+        var rows = await _readRepository.GetByColumnsAsync(
             query.Request.Columns,
             cancellationToken);
 
-        return _excelService.GenerateExcel(query.Request.Columns, customers);
+        return _excelService.GenerateExcel(query.Request.Columns, rows);
     }
 }

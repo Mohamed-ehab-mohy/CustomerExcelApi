@@ -1,5 +1,4 @@
 using ClosedXML.Excel;
-using CustomerExcelApi.Entities;
 using CustomerExcelApi.Interfaces;
 
 namespace CustomerExcelApi.Services;
@@ -8,21 +7,24 @@ public sealed class ExcelService : IExcelService
 {
     private static readonly HashSet<string> ValidColumns = new(StringComparer.OrdinalIgnoreCase)
     {
-        nameof(Customer.Id),
-        nameof(Customer.Name),
-        nameof(Customer.Email),
-        nameof(Customer.Address)
+        "Name", "Email", "Street", "City", "Country",
+        "ProductName", "Quantity", "Price", "OrderDate"
     };
 
     private static readonly Dictionary<string, string> DisplayNames = new(StringComparer.OrdinalIgnoreCase)
     {
-        [nameof(Customer.Id)] = "Id",
-        [nameof(Customer.Name)] = "Name",
-        [nameof(Customer.Email)] = "Email",
-        [nameof(Customer.Address)] = "Address"
+        ["Name"] = "Name",
+        ["Email"] = "Email",
+        ["Street"] = "Street",
+        ["City"] = "City",
+        ["Country"] = "Country",
+        ["ProductName"] = "Product Name",
+        ["Quantity"] = "Quantity",
+        ["Price"] = "Price",
+        ["OrderDate"] = "Order Date"
     };
 
-    public IReadOnlyList<Customer> ReadCustomersFromExcel(
+    public IReadOnlyList<CustomerImportRow> ReadCustomersFromExcel(
         Stream fileStream,
         CancellationToken cancellationToken = default)
     {
@@ -33,13 +35,13 @@ public sealed class ExcelService : IExcelService
         var lastCol = worksheet.LastColumnUsed();
 
         if (lastRow is null || lastCol is null)
-            return Array.Empty<Customer>();
+            return Array.Empty<CustomerImportRow>();
 
         var columnMap = BuildColumnMap(worksheet.Row(1), lastCol.ColumnNumber());
         if (columnMap.Count == 0)
-            return Array.Empty<Customer>();
+            return Array.Empty<CustomerImportRow>();
 
-        var customers = new List<Customer>();
+        var rows = new List<CustomerImportRow>();
         var rowCount = lastRow.RowNumber();
 
         for (int row = 2; row <= rowCount; row++)
@@ -50,21 +52,26 @@ public sealed class ExcelService : IExcelService
             if (IsRowEmpty(excelRow, lastCol.ColumnNumber()))
                 continue;
 
-            customers.Add(new Customer
+            rows.Add(new CustomerImportRow
             {
-                Id = Guid.NewGuid(),
-                Name = ReadCell(excelRow, columnMap, nameof(Customer.Name)),
-                Email = ReadCell(excelRow, columnMap, nameof(Customer.Email)),
-                Address = ReadCell(excelRow, columnMap, nameof(Customer.Address))
+                Name = ReadCell(excelRow, columnMap, "Name"),
+                Email = ReadCell(excelRow, columnMap, "Email"),
+                Street = ReadCell(excelRow, columnMap, "Street"),
+                City = ReadCell(excelRow, columnMap, "City"),
+                Country = ReadCell(excelRow, columnMap, "Country"),
+                ProductName = ReadCell(excelRow, columnMap, "ProductName"),
+                Quantity = int.TryParse(ReadCell(excelRow, columnMap, "Quantity"), out var q) ? q : 0,
+                Price = decimal.TryParse(ReadCell(excelRow, columnMap, "Price"), out var p) ? p : 0,
+                OrderDate = DateTime.TryParse(ReadCell(excelRow, columnMap, "OrderDate"), out var d) ? d : DateTime.MinValue
             });
         }
 
-        return customers;
+        return rows;
     }
 
     public byte[] GenerateExcel(
         IReadOnlyList<string> columns,
-        IReadOnlyList<Customer> rows)
+        IReadOnlyList<CustomerExportRow> rows)
     {
         var validColumns = columns
             .Where(c => ValidColumns.Contains(c))
@@ -84,11 +91,11 @@ public sealed class ExcelService : IExcelService
 
         for (int row = 0; row < rows.Count; row++)
         {
-            var c = rows[row];
+            var r = rows[row];
             for (int col = 0; col < validColumns.Count; col++)
             {
                 worksheet.Cell(row + 2, col + 1).Value =
-                    GetPropertyValue(c, validColumns[col]) ?? string.Empty;
+                    GetPropertyValue(r, validColumns[col]) ?? string.Empty;
             }
         }
 
@@ -135,10 +142,18 @@ public sealed class ExcelService : IExcelService
         return string.Empty;
     }
 
-    private static string? GetPropertyValue(Customer c, string property) =>
-        string.Equals(property, nameof(Customer.Id), StringComparison.OrdinalIgnoreCase) ? c.Id.ToString() :
-        string.Equals(property, nameof(Customer.Name), StringComparison.OrdinalIgnoreCase) ? c.Name :
-        string.Equals(property, nameof(Customer.Email), StringComparison.OrdinalIgnoreCase) ? c.Email :
-        string.Equals(property, nameof(Customer.Address), StringComparison.OrdinalIgnoreCase) ? c.Address :
-        null;
+    private static string? GetPropertyValue(CustomerExportRow r, string property) =>
+        property switch
+        {
+            "Name" => r.Name,
+            "Email" => r.Email,
+            "Street" => r.Street,
+            "City" => r.City,
+            "Country" => r.Country,
+            "ProductName" => r.ProductName,
+            "Quantity" => r.Quantity.ToString(),
+            "Price" => r.Price.ToString("F2"),
+            "OrderDate" => r.OrderDate.ToString("yyyy-MM-dd"),
+            _ => null
+        };
 }

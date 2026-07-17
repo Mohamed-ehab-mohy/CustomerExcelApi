@@ -43,8 +43,7 @@ app.UseExceptionHandler(errorApp =>
         await context.Response.WriteAsJsonAsync(new
         {
             error = exception?.Message,
-            inner = exception?.InnerException?.Message,
-            stack = exception?.StackTrace
+            inner = exception?.InnerException?.Message
         });
     });
 });
@@ -57,8 +56,30 @@ using (var scope = app.Services.CreateScope())
             ""Id"" uuid NOT NULL,
             ""Name"" character varying(200) NOT NULL,
             ""Email"" character varying(200) NOT NULL,
-            ""Address"" character varying(500) NOT NULL,
             CONSTRAINT ""PK_Customers"" PRIMARY KEY (""Id"")
+        );
+
+        CREATE TABLE IF NOT EXISTS ""Addresses"" (
+            ""Id"" uuid NOT NULL,
+            ""CustomerId"" uuid NOT NULL,
+            ""Street"" character varying(300) NOT NULL,
+            ""City"" character varying(100) NOT NULL,
+            ""Country"" character varying(100) NOT NULL,
+            CONSTRAINT ""PK_Addresses"" PRIMARY KEY (""Id""),
+            CONSTRAINT ""FK_Addresses_Customers_CustomerId"" FOREIGN KEY (""CustomerId"")
+                REFERENCES ""Customers"" (""Id"") ON DELETE CASCADE
+        );
+
+        CREATE TABLE IF NOT EXISTS ""Orders"" (
+            ""Id"" uuid NOT NULL,
+            ""CustomerId"" uuid NOT NULL,
+            ""ProductName"" character varying(200) NOT NULL,
+            ""Quantity"" integer NOT NULL,
+            ""Price"" numeric(18,2) NOT NULL,
+            ""OrderDate"" date NOT NULL,
+            CONSTRAINT ""PK_Orders"" PRIMARY KEY (""Id""),
+            CONSTRAINT ""FK_Orders_Customers_CustomerId"" FOREIGN KEY (""CustomerId"")
+                REFERENCES ""Customers"" (""Id"") ON DELETE CASCADE
         );
     ");
 }

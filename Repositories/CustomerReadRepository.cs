@@ -1,5 +1,3 @@
-using System.Linq.Expressions;
-using System.Reflection;
 using CustomerExcelApi.Data;
 using CustomerExcelApi.Entities;
 using CustomerExcelApi.Interfaces;
@@ -11,59 +9,30 @@ public sealed class CustomerReadRepository : ICustomerReadRepository
 {
     private readonly AppDbContext _db;
 
-    private static readonly HashSet<string> ValidColumns = new(StringComparer.OrdinalIgnoreCase)
-    {
-        nameof(Customer.Id),
-        nameof(Customer.Name),
-        nameof(Customer.Email),
-        nameof(Customer.Address)
-    };
-
-    private static readonly PropertyInfo[] Properties =
-        typeof(Customer).GetProperties(BindingFlags.Public | BindingFlags.Instance);
-
     public CustomerReadRepository(AppDbContext db) => _db = db;
 
-    public async Task<IReadOnlyList<Customer>> GetByColumnsAsync(
+    public async Task<IReadOnlyList<CustomerExportRow>> GetByColumnsAsync(
         IReadOnlyList<string> columns,
         CancellationToken cancellationToken = default)
     {
-        var valid = columns
-            .Where(c => ValidColumns.Contains(c))
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .ToList();
-
-        if (valid.Count == 0)
-            return Array.Empty<Customer>();
-
-        if (valid.Count == ValidColumns.Count)
-            return await _db.Customers.AsNoTracking().ToListAsync(cancellationToken);
-
-        var matchedProps = valid
-            .Select(v => Properties.FirstOrDefault(
-                p => p.Name.Equals(v, StringComparison.OrdinalIgnoreCase))!)
-            .Where(p => p is not null)
-            .ToList();
-
-        var selector = BuildSelector(matchedProps);
-
-        return await _db.Customers
+        var query = _db.Customers
             .AsNoTracking()
-            .Select(selector)
-            .ToListAsync(cancellationToken);
-    }
+            .SelectMany(c => c.Orders.DefaultIfEmpty(),
+                (c, o) => new { c, o })
+            .SelectMany(x => x.c.Addresses.DefaultIfEmpty(),
+                (x, a) => new CustomerExportRow
+                {
+                    Name = x.c.Name,
+                    Email = x.c.Email,
+                    Street = a != null ? a.Street : string.Empty,
+                    City = a != null ? a.City : string.Empty,
+                    Country = a != null ? a.Country : string.Empty,
+                    ProductName = x.o != null ? x.o.ProductName : string.Empty,
+                    Quantity = x.o != null ? x.o.Quantity : 0,
+                    Price = x.o != null ? x.o.Price : 0,
+                    OrderDate = x.o != null ? x.o.OrderDate : DateTime.MinValue
+                });
 
-    private static Expression<Func<Customer, Customer>> BuildSelector(List<PropertyInfo> properties)
-    {
-        var param = Expression.Parameter(typeof(Customer), "c");
-        var bindings = new List<MemberBinding>();
-
-        foreach (var prop in properties)
-        {
-            bindings.Add(Expression.Bind(prop, Expression.Property(param, prop)));
-        }
-
-        return Expression.Lambda<Func<Customer, Customer>>(
-            Expression.MemberInit(Expression.New(typeof(Customer)), bindings), param);
+        return await query.ToListAsync(cancellationToken);
     }
 }

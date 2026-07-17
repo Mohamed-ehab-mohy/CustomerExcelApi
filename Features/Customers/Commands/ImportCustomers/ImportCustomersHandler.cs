@@ -23,19 +23,19 @@ public sealed class ImportCustomersHandler
     {
         var stopwatch = Stopwatch.StartNew();
 
-        var customers = _excelService.ReadCustomersFromExcel(
+        var rows = _excelService.ReadCustomersFromExcel(
             command.FileStream,
             cancellationToken);
 
         var inserted = await _bulkRepository.BulkInsertAsync(
-            customers,
+            rows,
             cancellationToken);
 
         stopwatch.Stop();
 
         return new ImportResultDto
         {
-            TotalRows = customers.Count,
+            TotalRows = rows.Count,
             Inserted = inserted,
             DurationMs = stopwatch.ElapsedMilliseconds
         };

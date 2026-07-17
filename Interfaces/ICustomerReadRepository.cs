@@ -1,8 +1,10 @@
+using CustomerExcelApi.Entities;
+
 namespace CustomerExcelApi.Interfaces;
 
 public interface ICustomerReadRepository
 {
-    Task<IReadOnlyList<Entities.Customer>> GetByColumnsAsync(
+    Task<IReadOnlyList<CustomerExportRow>> GetByColumnsAsync(
         IReadOnlyList<string> columns,
         CancellationToken cancellationToken = default);
 }
