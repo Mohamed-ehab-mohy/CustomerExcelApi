@@ -674,12 +674,26 @@ Cancel a pending reminder.
 
 ### Reminder Status Values
 
-| Status | Meaning |
-|--------|---------|
-| `Pending` | Active, sending notifications on schedule |
-| `Read` | User marked as read, notifications stopped |
-| `Expired` | Max retry count reached, notifications stopped |
-| `Cancelled` | User cancelled the reminder |
+| Status | Meaning | Can Mark Read? | Can Cancel? |
+|--------|---------|----------------|-------------|
+| `Pending` | Active, sending notifications on schedule | Yes | Yes |
+| `Read` | User marked as read, notifications stopped | No (`400: "Reminder is already Read"`) | No |
+| `Expired` | Max retry count reached, notifications stopped | No (`400: "Reminder is already Expired"`) | No |
+| `Cancelled` | User cancelled the reminder | No | No |
+
+### Error Responses
+
+| Status | Error | When |
+|--------|-------|------|
+| `400` | `"Reminder is already Read"` | Mark as Read on Read reminder |
+| `400` | `"Reminder is already Expired"` | Mark as Read on Expired reminder |
+| `400` | `"Reminder is already Cancelled"` | Mark as Read on Cancelled reminder |
+| `400` | `"Reminder is not in Pending status"` | Cancel a non-Pending reminder |
+| `404` | Not Found | Reminder doesn't exist or belongs to another user |
+
+### User Isolation
+
+Each user can only access their own reminders. The `X-User-Id` header is used to identify the user. If you try to access a reminder belonging to another user, you'll get a `404 Not Found` response.
 
 ---
 

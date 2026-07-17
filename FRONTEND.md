@@ -1001,7 +1001,7 @@ The API includes a meeting reminder system. Users can create reminders that auto
 ### How Reminders Work
 
 ```
-User creates reminder for 20200 meeting, notify before 10min, repeat every 5min, max 12 retries
+User creates reminder for 20:00 meeting, notify before 10min, repeat every 5min, max 12 retries
   │
   ├── 19:50 → First notification sent
   ├── 19:55 → Second notification (if not read)
@@ -1077,12 +1077,12 @@ async function markAsRead(reminderId) {
 
 ### Reminder Status Values
 
-| Status | Meaning | Can Mark Read? |
-|--------|---------|----------------|
-| `Pending` | Active, sending notifications | Yes |
-| `Read` | Stopped by user | No |
-| `Expired` | Max retries reached | No |
-| `Cancelled` | Cancelled by user | No |
+| Status | Meaning | Can Mark Read? | Can Cancel? |
+|--------|---------|----------------|-------------|
+| `Pending` | Active, sending notifications | Yes | Yes |
+| `Read` | Stopped by user | No (`400: "Reminder is already Read"`) | No |
+| `Expired` | Max retries reached | No (`400: "Reminder is already Expired"`) | No |
+| `Cancelled` | Cancelled by user | No (`400: "Reminder is already Cancelled"`) | No |
 
 ### Reminder Response Format
 
@@ -1100,6 +1100,36 @@ async function markAsRead(reminderId) {
   "readAt": null
 }
 ```
+
+### Cancel Reminder
+
+```javascript
+async function cancelReminder(reminderId) {
+  const response = await fetch(
+    `https://customerexcelapi-production.up.railway.app/api/reminders/${reminderId}`,
+    {
+      method: 'DELETE',
+      headers: { 'X-User-Id': 'user-uuid' },
+    }
+  );
+  // Returns 204 No Content on success
+  // Returns 400 if reminder is not in Pending status
+}
+```
+
+### Error Responses
+
+| Status | Error | When |
+|--------|-------|------|
+| `400` | `"Reminder is already Read"` | Mark as Read on Read reminder |
+| `400` | `"Reminder is already Expired"` | Mark as Read on Expired reminder |
+| `400` | `"Reminder is already Cancelled"` | Mark as Read on Cancelled reminder |
+| `400` | `"Reminder is not in Pending status"` | Cancel a non-Pending reminder |
+| `404` | Not Found | Reminder doesn't exist or belongs to another user |
+
+### User Isolation
+
+Each user can only access their own reminders. The `X-User-Id` header is used to identify the user. If you try to access a reminder belonging to another user, you'll get a `404 Not Found` response.
 
 ### Authentication
 
