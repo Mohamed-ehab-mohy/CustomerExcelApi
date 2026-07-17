@@ -4,6 +4,7 @@ using CustomerExcelApi.Features.Customers.Queries.ExportCustomers;
 using CustomerExcelApi.Interfaces;
 using CustomerExcelApi.Repositories;
 using CustomerExcelApi.Services;
+using CustomerExcelApi.Services.Notifications;
 using Microsoft.EntityFrameworkCore;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -31,6 +32,11 @@ builder.Services.AddScoped<ICustomerBulkRepository, CustomerBulkRepository>();
 builder.Services.AddScoped<IExcelService, ExcelService>();
 builder.Services.AddScoped<ImportCustomersHandler>();
 builder.Services.AddScoped<ExportCustomersHandler>();
+
+builder.Services.AddSingleton<SignalRNotificationProvider>();
+builder.Services.AddSingleton<WebPushNotificationProvider>();
+builder.Services.AddScoped<INotificationService, NotificationService>();
+builder.Services.AddHostedService<ReminderBackgroundService>();
 
 var app = builder.Build();
 
