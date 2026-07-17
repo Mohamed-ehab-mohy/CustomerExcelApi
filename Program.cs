@@ -52,6 +52,16 @@ using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
     db.Database.ExecuteSqlRaw(@"
+        DO $$
+        BEGIN
+            IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='Customers' AND column_name='Address') THEN
+                DROP TABLE IF EXISTS ""Orders"" CASCADE;
+                DROP TABLE IF EXISTS ""Addresses"" CASCADE;
+                DROP TABLE IF EXISTS ""Customers"" CASCADE;
+                DROP TABLE IF EXISTS ""__EFMigrationsHistory"" CASCADE;
+            END IF;
+        END $$;
+
         CREATE TABLE IF NOT EXISTS ""Customers"" (
             ""Id"" uuid NOT NULL,
             ""Name"" character varying(200) NOT NULL,
