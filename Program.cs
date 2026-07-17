@@ -23,10 +23,31 @@ builder.Services.AddScoped<ExportCustomersHandler>();
 
 var app = builder.Build();
 
+if (app.Environment.IsDevelopment())
+{
+    app.UseDeveloperExceptionPage();
+}
+
 app.UseSwagger();
 app.UseSwaggerUI();
 
 app.MapControllers();
+
+app.UseExceptionHandler(errorApp =>
+{
+    errorApp.Run(async context =>
+    {
+        var exception = context.Features.Get<Microsoft.AspNetCore.Diagnostics.IExceptionHandlerFeature>()?.Error;
+        context.Response.ContentType = "application/json";
+        context.Response.StatusCode = 500;
+        await context.Response.WriteAsJsonAsync(new
+        {
+            error = exception?.Message,
+            inner = exception?.InnerException?.Message,
+            stack = exception?.StackTrace
+        });
+    });
+});
 
 using (var scope = app.Services.CreateScope())
 {
