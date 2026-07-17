@@ -598,6 +598,91 @@ export default CustomerManager;
 
 ---
 
+## Reminder System
+
+A background service that sends meeting reminders to users on a schedule. Reminders repeat until the user marks them as read or the max retry count is reached.
+
+### How It Works
+
+```
+Create Reminder
+  → MeetingTime: 20:00, NotifyBefore: 10min, Repeat: 5min, MaxRetry: 12
+  → First notification sent at: 19:50
+  → If not read → re-sent every 5 minutes
+  → Mark as Read → stops sending
+  → RetryCount >= MaxRetry → marked as Expired
+```
+
+### Reminder API Endpoints
+
+#### POST `/api/reminders`
+
+Create a new reminder.
+
+```json
+{
+  "title": "Meeting with client",
+  "message": "Discuss project requirements",
+  "meetingTime": "2026-08-01T20:00:00Z",
+  "notifyBeforeMinutes": 10,
+  "repeatEveryMinutes": 5,
+  "maxRetryCount": 12
+}
+```
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `title` | string | required | Reminder title |
+| `message` | string | required | Reminder message |
+| `meetingTime` | DateTime | required | When the meeting occurs |
+| `notifyBeforeMinutes` | int | 10 | Minutes before meeting to start notifying |
+| `repeatEveryMinutes` | int | 5 | Minutes between each retry |
+| `maxRetryCount` | int | 12 | Max notifications before marking as expired |
+
+**Response:** `201 Created`
+
+#### GET `/api/reminders`
+
+Get all reminders for the current user.
+
+**Query params:** `?status=Pending|Read|Expired|Cancelled`
+
+**Response:** `200 OK`
+
+```json
+{
+  "reminders": [...],
+  "totalCount": 5
+}
+```
+
+#### GET `/api/reminders/{id}`
+
+Get a single reminder by ID.
+
+#### PATCH `/api/reminders/{id}/read`
+
+Mark a reminder as read. Stops all future notifications for this reminder.
+
+**Response:** `200 OK` or `400` if already read/expired
+
+#### DELETE `/api/reminders/{id}`
+
+Cancel a pending reminder.
+
+**Response:** `204 No Content`
+
+### Reminder Status Values
+
+| Status | Meaning |
+|--------|---------|
+| `Pending` | Active, sending notifications on schedule |
+| `Read` | User marked as read, notifications stopped |
+| `Expired` | Max retry count reached, notifications stopped |
+| `Cancelled` | User cancelled the reminder |
+
+---
+
 ## CORS
 
 The API supports **cross-origin requests** from any frontend. No special configuration is needed.
@@ -647,26 +732,38 @@ Error response format:
 ```
 CustomerExcelApi/
 ├── Controllers/
-│   └── CustomersController.cs
+│   ├── CustomersController.cs
+│   └── RemindersController.cs
 ├── Data/
 │   ├── AppDbContext.cs
 │   └── Configurations/
-│       └── CustomerConfiguration.cs
+│       ├── CustomerConfiguration.cs
+│       └── ReminderConfiguration.cs
 ├── Entities/
 │   ├── Customer.cs
 │   ├── Address.cs
-│   └── Order.cs
+│   ├── Order.cs
+│   └── Reminder.cs
 ├── Features/
-│   └── Customers/
-│       ├── Commands/ImportCustomers/
-│       ├── DTOs/
-│       └── Queries/ExportCustomers/
+│   ├── Customers/
+│   │   ├── Commands/ImportCustomers/
+│   │   ├── DTOs/
+│   │   └── Queries/ExportCustomers/
+│   └── Reminders/
+│       └── DTOs/
 ├── Interfaces/
 ├── Repositories/
 │   ├── CustomerBulkRepository.cs
 │   └── CustomerReadRepository.cs
 ├── Services/
-│   └── ExcelService.cs
+│   ├── ExcelService.cs
+│   ├── ReminderBackgroundService.cs
+│   └── Notifications/
+│       ├── INotificationService.cs
+│       ├── NotificationService.cs
+│       ├── SignalRNotificationProvider.cs
+│       └── WebPushNotificationProvider.cs
+├── Migrations/
 ├── Dockerfile
 └── Program.cs
 ```

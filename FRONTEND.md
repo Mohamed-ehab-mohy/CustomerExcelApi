@@ -994,6 +994,123 @@ export_excel(['Name', 'Email', 'City'], 'output.xlsx')
 
 ---
 
+## Reminder System
+
+The API includes a meeting reminder system. Users can create reminders that automatically send notifications on a schedule until the user marks them as read.
+
+### How Reminders Work
+
+```
+User creates reminder for 20200 meeting, notify before 10min, repeat every 5min, max 12 retries
+  │
+  ├── 19:50 → First notification sent
+  ├── 19:55 → Second notification (if not read)
+  ├── 20:00 → Third notification (if not read)
+  ├── ...
+  └── After 12 retries → Marked as Expired
+
+OR
+  └── User clicks "Mark as Read" → Stops all notifications
+```
+
+### Reminder Endpoints
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `POST` | `/api/reminders` | Create a reminder |
+| `GET` | `/api/reminders` | List all reminders |
+| `GET` | `/api/reminders/{id}` | Get single reminder |
+| `PATCH` | `/api/reminders/{id}/read` | Mark as read (stops notifications) |
+| `DELETE` | `/api/reminders/{id}` | Cancel a pending reminder |
+
+### Create Reminder
+
+```javascript
+async function createReminder() {
+  const response = await fetch(
+    'https://customerexcelapi-production.up.railway.app/api/reminders',
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-User-Id': 'user-uuid' },
+      body: JSON.stringify({
+        title: 'Meeting with client',
+        message: 'Discuss project requirements',
+        meetingTime: '2026-08-01T20:00:00Z',
+        notifyBeforeMinutes: 10,
+        repeatEveryMinutes: 5,
+        maxRetryCount: 12,
+      }),
+    }
+  );
+  return await response.json();
+}
+```
+
+### Get All Reminders
+
+```javascript
+async function getReminders(status = 'Pending') {
+  const response = await fetch(
+    `https://customerexcelapi-production.up.railway.app/api/reminders?status=${status}`,
+    { headers: { 'X-User-Id': 'user-uuid' } }
+  );
+  const data = await response.json();
+  // data.reminders = [...], data.totalCount = 5
+  return data;
+}
+```
+
+### Mark as Read (Stops Notifications)
+
+```javascript
+async function markAsRead(reminderId) {
+  const response = await fetch(
+    `https://customerexcelapi-production.up.railway.app/api/reminders/${reminderId}/read`,
+    {
+      method: 'PATCH',
+      headers: { 'X-User-Id': 'user-uuid' },
+    }
+  );
+  return await response.json();
+}
+```
+
+### Reminder Status Values
+
+| Status | Meaning | Can Mark Read? |
+|--------|---------|----------------|
+| `Pending` | Active, sending notifications | Yes |
+| `Read` | Stopped by user | No |
+| `Expired` | Max retries reached | No |
+| `Cancelled` | Cancelled by user | No |
+
+### Reminder Response Format
+
+```json
+{
+  "id": "uuid",
+  "title": "Meeting with client",
+  "message": "Discuss project requirements",
+  "meetingTime": "2026-08-01T20:00:00Z",
+  "nextReminderTime": "2026-08-01T19:55:00Z",
+  "retryCount": 1,
+  "maxRetryCount": 12,
+  "status": "Pending",
+  "createdAt": "2026-07-17T10:00:00Z",
+  "readAt": null
+}
+```
+
+### Authentication
+
+All reminder endpoints require `X-User-Id` header to identify the user:
+
+```
+X-User-Id: 550e8400-e29b-41d4-a716-446655440000
+```
+
+---
+
 ## FAQ
 
 ### Q: Can I send an Excel file with only some columns?
