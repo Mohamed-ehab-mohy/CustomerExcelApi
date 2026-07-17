@@ -1,6 +1,7 @@
 using CustomerExcelApi.Data;
 using CustomerExcelApi.Features.Customers.Commands.ImportCustomers;
 using CustomerExcelApi.Features.Customers.Queries.ExportCustomers;
+using CustomerExcelApi.Hubs;
 using CustomerExcelApi.Interfaces;
 using CustomerExcelApi.Repositories;
 using CustomerExcelApi.Services;
@@ -32,6 +33,8 @@ builder.Services.AddScoped<ICustomerBulkRepository, CustomerBulkRepository>();
 builder.Services.AddScoped<IExcelService, ExcelService>();
 builder.Services.AddScoped<ImportCustomersHandler>();
 builder.Services.AddScoped<ExportCustomersHandler>();
+
+builder.Services.AddSignalR();
 
 builder.Services.AddSingleton<SignalRNotificationProvider>();
 builder.Services.AddSingleton<WebPushNotificationProvider>();
@@ -66,6 +69,7 @@ app.UseSwagger();
 app.UseSwaggerUI();
 
 app.MapControllers();
+app.MapHub<NotificationHub>("/hubs/notifications");
 
 using (var scope = app.Services.CreateScope())
 {
@@ -97,6 +101,22 @@ using (var scope = app.Services.CreateScope())
 
         CREATE INDEX IF NOT EXISTS ""IX_Reminders_UserId_Status""
             ON ""Reminders"" (""UserId"", ""Status"");
+
+        CREATE TABLE IF NOT EXISTS ""PushSubscriptions"" (
+            ""Id"" uuid NOT NULL,
+            ""UserId"" uuid NOT NULL,
+            ""Endpoint"" character varying(500) NOT NULL,
+            ""P256dhKey"" character varying(200) NOT NULL,
+            ""AuthKey"" character varying(200) NOT NULL,
+            ""CreatedAt"" timestamp with time zone NOT NULL,
+            CONSTRAINT ""PK_PushSubscriptions"" PRIMARY KEY (""Id"")
+        );
+
+        CREATE INDEX IF NOT EXISTS ""IX_PushSubscriptions_UserId""
+            ON ""PushSubscriptions"" (""UserId"");
+
+        CREATE UNIQUE INDEX IF NOT EXISTS ""IX_PushSubscriptions_UserId_Endpoint""
+            ON ""PushSubscriptions"" (""UserId"", ""Endpoint"");
     ");
 }
 

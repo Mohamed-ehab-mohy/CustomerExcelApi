@@ -1141,6 +1141,210 @@ X-User-Id: 550e8400-e29b-41d4-a716-446655440000
 
 ---
 
+## Real-Time Notifications (SignalR)
+
+The API uses **SignalR** for real-time push notifications. When a reminder triggers, the server pushes a notification to the connected client instantly.
+
+### Hub Endpoint
+
+```
+wss://customerexcelapi-production.up.railway.app/hubs/notifications
+```
+
+### Install SignalR Client
+
+```bash
+npm install @microsoft/signalr
+```
+
+### Connect to the Hub
+
+```javascript
+import * as signalR from '@microsoft/signalr';
+
+const connection = new signalR.HubConnectionBuilder()
+  .withUrl('https://customerexcelapi-production.up.railway.app/hubs/notifications', {
+    headers: { 'X-User-Id': userId }
+  })
+  .withAutomaticReconnect()
+  .build();
+
+// Listen for reminder notifications
+connection.on('ReminderNotification', (notification) => {
+  console.log('Reminder:', notification);
+  // notification = {
+  //   type: 'reminder',
+  //   reminderId: 'uuid',
+  //   title: 'Meeting with client',
+  //   body: 'Discuss project requirements',
+  //   meetingTime: '2026-08-01T20:00:00Z'
+  // }
+
+  // Show browser notification or in-app toast
+  new Notification(notification.title, { body: notification.body });
+});
+
+// Start connection
+await connection.start();
+console.log('SignalR connected');
+```
+
+### Connection States
+
+| State | Meaning |
+|-------|---------|
+| `Connected` | Active and receiving notifications |
+| `Reconnecting` | Lost connection, trying to reconnect |
+| `Disconnected` | Not connected, needs manual restart |
+
+```javascript
+connection.onreconnecting(() => console.log('Reconnecting...'));
+connection.onreconnected(() => console.log('Reconnected'));
+connection.onclose(() => console.log('Disconnected'));
+```
+
+---
+
+## Browser Push Notifications (WebPush)
+
+For notifications when the browser tab is closed or the user is on a different page, use **WebPush**.
+
+### How It Works
+
+1. Frontend registers a **Service Worker**
+2. Frontend subscribes to **Push API** and gets a subscription object
+3. Frontend sends the subscription to `/api/push-subscriptions`
+4. Server sends push notifications via the **WebPush protocol**
+
+### Step 1: Register Service Worker
+
+Create `public/sw.js`:
+
+```javascript
+self.addEventListener('push', (event) => {
+  const data = event.data ? event.data.json() : {};
+  event.waitUntil(
+    self.registration.showNotification(data.title || 'Reminder', {
+      body: data.body || '',
+      icon: '/icon.png',
+      data: { reminderId: data.reminderId }
+    })
+  );
+});
+
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+  event.waitUntil(
+    clients.openWindow('/')
+  );
+});
+```
+
+In your app's entry point:
+
+```javascript
+if ('serviceWorker' in navigator) {
+  await navigator.serviceWorker.register('/sw.js');
+}
+```
+
+### Step 2: Subscribe to Push
+
+```javascript
+const vapidPublicKey = 'BIBOwUuD3kOdCfI3yx5JPy-bHUhx76C5KZPnloSv_MKBIM0Exey3ZT77Km42DOsqNWn6wlvj_PtulMOyNYmNyAs';
+
+async function subscribeToPush(userId) {
+  const registration = await navigator.serviceWorker.ready;
+  const subscription = await registration.pushManager.subscribe({
+    userVisibleOnly: true,
+    applicationServerKey: vapidPublicKey
+  });
+
+  // Send subscription to server
+  await fetch('https://customerexcelapi-production.up.railway.app/api/push-subscriptions', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-User-Id': userId
+    },
+    body: JSON.stringify({
+      endpoint: subscription.endpoint,
+      keys: {
+        p256dh: arrayBufferToBase64(subscription.getKey('p256dh')),
+        auth: arrayBufferToBase64(subscription.getKey('auth'))
+      }
+    })
+  });
+}
+
+function arrayBufferToBase64(buffer) {
+  return btoa(String.fromCharCode(...new Uint8Array(buffer)));
+}
+```
+
+### Step 3: Unsubscribe (Optional)
+
+```javascript
+async function unsubscribeFromPush(userId, endpoint) {
+  const registration = await navigator.serviceWorker.ready;
+  const subscription = await registration.pushManager.getSubscription();
+  if (subscription) {
+    await subscription.unsubscribe();
+  }
+
+  await fetch(
+    `https://customerexcelapi-production.up.railway.app/api/push-subscriptions?endpoint=${encodeURIComponent(endpoint)}`,
+    {
+      method: 'DELETE',
+      headers: { 'X-User-Id': userId }
+    }
+  );
+}
+```
+
+### Push Subscription Endpoints
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `POST` | `/api/push-subscriptions` | Register a push subscription |
+| `DELETE` | `/api/push-subscriptions?endpoint=...` | Remove a subscription |
+| `GET` | `/api/push-subscriptions` | List user's subscriptions |
+
+### VAPID Public Key
+
+```
+BIBOwUuD3kOdCfI3yx5JPy-bHUhx76C5KZPnloSv_MKBIM0Exey3ZT77Km42DOsqNWn6wlvj_PtulMOyNYmNyAs
+```
+
+---
+
+## Complete Notification Setup
+
+For the best experience, implement **both** SignalR and WebPush:
+
+| Scenario | SignalR | WebPush |
+|----------|---------|---------|
+| Browser tab open | ✅ Real-time | ✅ Fallback |
+| Browser tab closed | ❌ | ✅ Push notification |
+| Different page | ❌ | ✅ Push notification |
+| Mobile (browser) | ✅ WebSocket | ✅ Push notification |
+
+### Recommended Flow
+
+```
+Page load
+  ├── Connect to SignalR hub
+  ├── Register Service Worker
+  ├── Subscribe to Push
+  └── Subscribe to Push on server
+
+Reminder triggers
+  ├── SignalR → in-app toast (if tab is open)
+  └── WebPush → browser notification (if tab is closed or as fallback)
+```
+
+---
+
 ## FAQ
 
 ### Q: Can I send an Excel file with only some columns?

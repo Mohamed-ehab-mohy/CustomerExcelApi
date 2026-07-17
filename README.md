@@ -697,6 +697,41 @@ Each user can only access their own reminders. The `X-User-Id` header is used to
 
 ---
 
+## Real-Time Notifications
+
+The API delivers reminder notifications through two channels:
+
+### SignalR (In-App Real-Time)
+
+| Setting | Value |
+|---------|-------|
+| Hub URL | `wss://customerexcelapi-production.up.railway.app/hubs/notifications` |
+| Auth | `X-User-Id` header |
+| Event | `ReminderNotification` |
+
+Payload:
+```json
+{
+  "type": "reminder",
+  "reminderId": "uuid",
+  "title": "Meeting with client",
+  "body": "Discuss project requirements",
+  "meetingTime": "2026-08-01T20:00:00Z"
+}
+```
+
+### WebPush (Browser Notifications)
+
+| Setting | Value |
+|---------|-------|
+| Subscription endpoint | `POST /api/push-subscriptions` |
+| Unsubscribe endpoint | `DELETE /api/push-subscriptions?endpoint=...` |
+| VAPID public key | `BIBOwUuD3kOdCfI3yx5JPy-bHUhx76C5KZPnloSv_MKBIM0Exey3ZT77Km42DOsqNWn6wlvj_PtulMOyNYmNyAs` |
+
+For full frontend integration code, see **FRONTEND.md**.
+
+---
+
 ## CORS
 
 The API supports **cross-origin requests** from any frontend. No special configuration is needed.
@@ -747,16 +782,19 @@ Error response format:
 CustomerExcelApi/
 ├── Controllers/
 │   ├── CustomersController.cs
+│   ├── PushSubscriptionsController.cs
 │   └── RemindersController.cs
 ├── Data/
 │   ├── AppDbContext.cs
 │   └── Configurations/
 │       ├── CustomerConfiguration.cs
+│       ├── PushSubscriptionConfiguration.cs
 │       └── ReminderConfiguration.cs
 ├── Entities/
 │   ├── Customer.cs
 │   ├── Address.cs
 │   ├── Order.cs
+│   ├── PushSubscription.cs
 │   └── Reminder.cs
 ├── Features/
 │   ├── Customers/
@@ -765,6 +803,8 @@ CustomerExcelApi/
 │   │   └── Queries/ExportCustomers/
 │   └── Reminders/
 │       └── DTOs/
+├── Hubs/
+│   └── NotificationHub.cs
 ├── Interfaces/
 ├── Repositories/
 │   ├── CustomerBulkRepository.cs

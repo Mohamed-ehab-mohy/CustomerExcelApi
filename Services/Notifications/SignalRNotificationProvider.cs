@@ -1,22 +1,49 @@
+using CustomerExcelApi.Hubs;
+using Microsoft.AspNetCore.SignalR;
 using Microsoft.Extensions.Logging;
 
 namespace CustomerExcelApi.Services.Notifications;
 
 public sealed class SignalRNotificationProvider : INotificationProvider
 {
+    private readonly IHubContext<NotificationHub> _hubContext;
     private readonly ILogger<SignalRNotificationProvider> _logger;
 
-    public SignalRNotificationProvider(ILogger<SignalRNotificationProvider> logger)
+    public SignalRNotificationProvider(
+        IHubContext<NotificationHub> hubContext,
+        ILogger<SignalRNotificationProvider> logger)
     {
+        _hubContext = hubContext;
         _logger = logger;
     }
 
-    public Task<bool> SendAsync(NotificationMessage message, CancellationToken cancellationToken = default)
+    public async Task<bool> SendAsync(NotificationMessage message, CancellationToken cancellationToken = default)
     {
-        _logger.LogInformation(
-            "SignalR → User {UserId}: {Title} (Reminder {ReminderId})",
-            message.UserId, message.Title, message.ReminderId);
+        try
+        {
+            var payload = new
+            {
+                type = "reminder",
+                reminderId = message.ReminderId,
+                title = message.Title,
+                body = message.Body,
+                meetingTime = message.MeetingTime
+            };
 
-        return Task.FromResult(true);
+            await _hubContext.Clients
+                .Group($"user-{message.UserId}")
+                .SendAsync("ReminderNotification", payload, cancellationToken);
+
+            _logger.LogInformation(
+                "SignalR → User {UserId}: {Title} (Reminder {ReminderId})",
+                message.UserId, message.Title, message.ReminderId);
+
+            return true;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "SignalR failed for User {UserId}", message.UserId);
+            return false;
+        }
     }
 }
