@@ -16,7 +16,8 @@ public sealed class CustomerReadRepository : ICustomerReadRepository
 
     private static readonly HashSet<string> OrderColumns = new(StringComparer.OrdinalIgnoreCase)
     {
-        "ProductName", "Quantity", "Price", "OrderDate"
+        "ProductName", "Quantity", "Price", "OrderDate",
+        "Product Name", "Order Date"
     };
 
     public CustomerReadRepository(AppDbContext db) => _db = db;

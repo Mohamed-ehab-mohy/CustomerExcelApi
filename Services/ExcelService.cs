@@ -24,6 +24,12 @@ public sealed class ExcelService : IExcelService
         ["OrderDate"] = "Order Date"
     };
 
+    private static readonly Dictionary<string, string> DisplayToInternal = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ["Product Name"] = "ProductName",
+        ["Order Date"] = "OrderDate"
+    };
+
     public IReadOnlyList<CustomerImportRow> ReadCustomersFromExcel(
         Stream fileStream,
         CancellationToken cancellationToken = default)
@@ -74,7 +80,8 @@ public sealed class ExcelService : IExcelService
         IReadOnlyList<CustomerExportRow> rows)
     {
         var validColumns = columns
-            .Where(c => ValidColumns.Contains(c))
+            .Where(c => ValidColumns.Contains(c) || DisplayToInternal.ContainsKey(c))
+            .Select(c => DisplayToInternal.TryGetValue(c, out var internalName) ? internalName : c)
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToList();
 
@@ -117,6 +124,8 @@ public sealed class ExcelService : IExcelService
 
             if (ValidColumns.Contains(header))
                 map[col] = header;
+            else if (DisplayToInternal.TryGetValue(header, out var internalName))
+                map[col] = internalName;
             else
             {
                 var match = ValidColumns.FirstOrDefault(
