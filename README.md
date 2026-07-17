@@ -613,6 +613,21 @@ Create Reminder
   → RetryCount >= MaxRetry → marked as Expired
 ```
 
+### Notification Reliability
+
+Notifications use a **fallback chain** — if one method fails, the next is tried:
+
+```
+SignalR (real-time) → WebPush (browser push) → logged as failed
+```
+
+**Key guarantee:** If a notification fails (both SignalR and WebPush), the reminder **continues processing normally**:
+- `RetryCount` still increments
+- `NextReminderTime` is still scheduled
+- When `MaxRetryCount` is reached, it still becomes `Expired`
+
+Notification failure **never** stops the reminder lifecycle.
+
 ### Reminder API Endpoints
 
 #### POST `/api/reminders`

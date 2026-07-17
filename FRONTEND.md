@@ -1013,6 +1013,24 @@ OR
   └── User clicks "Mark as Read" → Stops all notifications
 ```
 
+### Notification Reliability
+
+Notifications are delivered through a **fallback chain** — if one method fails, the next one is tried:
+
+```
+BackgroundService polls DB every 30s
+  └── NotificationService.SendAsync
+        ├── SignalR (real-time) → try/catch, returns false on failure
+        └── WebPush (browser push) → try/catch, returns false on failure
+```
+
+**Key guarantee:** If a notification fails (both SignalR and WebPush), the reminder **continues processing normally**:
+- `RetryCount` still increments
+- `NextReminderTime` is still scheduled
+- When `MaxRetryCount` is reached, it still becomes `Expired`
+
+Notification failure **never** stops the reminder lifecycle.
+
 ### Reminder Endpoints
 
 | Method | Endpoint | Description |
