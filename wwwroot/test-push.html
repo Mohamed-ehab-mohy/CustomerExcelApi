@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Push Notification Test</title>
+    <style>
+        body { font-family: Arial, sans-serif; max-width: 600px; margin: 50px auto; padding: 20px; }
+        .step { background: #f5f5f5; padding: 15px; margin: 10px 0; border-radius: 8px; }
+        .step.success { background: #d4edda; border: 1px solid #c3e6cb; }
+        .step.error { background: #f8d7da; border: 1px solid #f5c6cb; }
+        .step.active { background: #fff3cd; border: 1px solid #ffeeba; }
+        button { background: #007bff; color: white; border: none; padding: 12px 24px; border-radius: 6px; cursor: pointer; font-size: 16px; margin: 5px; }
+        button:hover { background: #0056b3; }
+        button:disabled { background: #ccc; cursor: not-allowed; }
+        #log { background: #1e1e1e; color: #0f0; padding: 15px; border-radius: 8px; font-family: monospace; font-size: 13px; max-height: 300px; overflow-y: auto; white-space: pre-wrap; }
+    </style>
+</head>
+<body>
+    <h1>Push Notification Test</h1>
+
+    <div class="step" id="step1">
+        <strong>Step 1:</strong> Register Service Worker
+        <button onclick="registerSW()">Register</button>
+    </div>
+
+    <div class="step" id="step2">
+        <strong>Step 2:</strong> Subscribe to Push
+        <button onclick="subscribePush()" id="subBtn" disabled>Subscribe</button>
+    </div>
+
+    <div class="step" id="step3">
+        <strong>Step 3:</strong> Send Test Push
+        <button onclick="testPush()" id="testBtn" disabled>Send Test</button>
+    </div>
+
+    <div class="step" id="step4">
+        <strong>Step 4:</strong> Create Reminder (auto-expires in 2 min)
+        <button onclick="createReminder()" id="remBtn" disabled>Create Reminder</button>
+    </div>
+
+    <h3>Log:</h3>
+    <div id="log"></div>
+
+    <script>
+        const API = 'https://customerexcelapi-production.up.railway.app';
+        const USER_ID = '550e8400-e29b-41d4-a716-446655440000';
+        const VAPID_KEY = 'BIBOwUuD3kOdCfI3yx5JPy-bHUhx76C5KZPnloSv_MKBIM0Exey3ZT77Km42DOsqNWn6wlvj_PtulMOyNYmNyAs';
+        let subscription = null;
+
+        function log(msg) {
+            const el = document.getElementById('log');
+            el.textContent += `[${new Date().toLocaleTimeString()}] ${msg}\n`;
+            el.scrollTop = el.scrollHeight;
+        }
+
+        function setStep(id, status, msg) {
+            const el = document.getElementById(id);
+            el.className = `step ${status}`;
+            if (msg) el.innerHTML += `<br><small>${msg}</small>`;
+        }
+
+        async function registerSW() {
+            try {
+                const reg = await navigator.serviceWorker.register('/sw.js');
+                log('Service Worker registered');
+                setStep('step1', 'success', 'Done');
+                document.getElementById('subBtn').disabled = false;
+            } catch (e) {
+                log('SW Error: ' + e.message);
+                setStep('step1', 'error', e.message);
+            }
+        }
+
+        async function subscribePush() {
+            try {
+                const reg = await navigator.serviceWorker.ready;
+                subscription = await reg.pushManager.subscribe({
+                    userVisibleOnly: true,
+                    applicationServerKey: VAPID_KEY
+                });
+
+                const p256dh = btoa(String.fromCharCode(...new Uint8Array(subscription.getKey('p256dh'))));
+                const auth = btoa(String.fromCharCode(...new Uint8Array(subscription.getKey('auth'))));
+
+                const res = await fetch(`${API}/api/push-subscriptions`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'X-User-Id': USER_ID },
+                    body: JSON.stringify({
+                        endpoint: subscription.endpoint,
+                        keys: { p256dh, auth }
+                    })
+                });
+
+                log('Subscribed to push! Status: ' + res.status);
+                setStep('step2', 'success', 'Done');
+                document.getElementById('testBtn').disabled = false;
+                document.getElementById('remBtn').disabled = false;
+            } catch (e) {
+                log('Subscribe Error: ' + e.message);
+                setStep('step2', 'error', e.message);
+            }
+        }
+
+        async function testPush() {
+            try {
+                const res = await fetch(`${API}/api/push-subscriptions/test`, {
+                    method: 'POST',
+                    headers: { 'X-User-Id': USER_ID }
+                });
+                const data = await res.json();
+                log('Test push sent: ' + JSON.stringify(data));
+                setStep('step3', 'success', 'Check your notifications!');
+            } catch (e) {
+                log('Test Error: ' + e.message);
+                setStep('step3', 'error', e.message);
+            }
+        }
+
+        async function createReminder() {
+            try {
+                const meetingTime = new Date(Date.now() + 120000).toISOString();
+                const res = await fetch(`${API}/api/reminders`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'X-User-Id': USER_ID },
+                    body: JSON.stringify({
+                        title: 'Test Meeting',
+                        message: 'This is a test reminder',
+                        meetingTime,
+                        notifyBeforeMinutes: 1,
+                        repeatEveryMinutes: 1,
+                        maxRetryCount: 3
+                    })
+                });
+                const data = await res.json();
+                log('Reminder created: ' + data.id);
+                log('Will trigger in ~1 minute. Watch for notification!');
+                setStep('step4', 'success', 'Reminder active - wait for notification');
+            } catch (e) {
+                log('Reminder Error: ' + e.message);
+                setStep('step4', 'error', e.message);
+            }
+        }
+    </script>
+</body>
+</html>
