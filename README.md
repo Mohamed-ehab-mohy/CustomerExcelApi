@@ -1,6 +1,6 @@
 # CustomerExcelApi
 
-ASP.NET Core 8 Web API for importing and exporting customer data via Excel files. Built with PostgreSQL, ClosedXML, and deployed on Railway.
+ASP.NET Core 8 Web API for importing and exporting customer data via Excel files. Supports multi-table schema (Customers + Addresses + Orders) with dynamic column selection.
 
 **Live API:** https://customerexcelapi-production.up.railway.app/swagger/index.html
 
@@ -21,53 +21,66 @@ ASP.NET Core 8 Web API for importing and exporting customer data via Excel files
 
 ---
 
-## Project Structure
+## Database Schema
+
+### ER Diagram
 
 ```
-CustomerExcelApi/
-├── Controllers/
-│   └── CustomersController.cs          # API endpoints
-├── Data/
-│   ├── AppDbContext.cs                  # EF Core DbContext
-│   └── Configurations/
-│       └── CustomerConfiguration.cs     # Entity config
-├── Entities/
-│   └── Customer.cs                      # Domain model
-├── Features/
-│   └── Customers/
-│       ├── Commands/ImportCustomers/    # Import command + handler
-│       ├── DTOs/                        # Data transfer objects
-│       └── Queries/ExportCustomers/     # Export query + handler
-├── Interfaces/                          # Repository + service contracts
-├── Migrations/                          # EF Core migrations
-├── Repositories/
-│   ├── CustomerBulkRepository.cs        # Bulk insert via Npgsql COPY
-│   └── CustomerReadRepository.cs        # Dynamic column projection
-├── Services/
-│   └── ExcelService.cs                  # Excel read/write logic
-├── Dockerfile
-└── Program.cs                           # App entry point
+┌──────────────┐       ┌──────────────────┐
+│  Customers   │       │    Addresses     │
+├──────────────┤       ├──────────────────┤
+│ Id (PK)      │──┐    │ Id (PK)          │
+│ Name         │  └───>│ CustomerId (FK)  │
+│ Email        │       │ Street           │
+└──────────────┘       │ City             │
+       │               │ Country          │
+       │               └──────────────────┘
+       │
+       │               ┌──────────────────┐
+       │               │     Orders       │
+       │               ├──────────────────┤
+       └──────────────>│ Id (PK)          │
+                       │ CustomerId (FK)  │
+                       │ ProductName      │
+                       │ Quantity         │
+                       │ Price            │
+                       │ OrderDate        │
+                       └──────────────────┘
 ```
 
----
+### Customers Table
 
-## Customer Model
-
-```json
-{
-  "id": "guid (auto-generated)",
-  "name": "string (max 200 chars)",
-  "email": "string (max 200 chars)",
-  "address": "string (max 500 chars)"
-}
-```
-
-| Field | Type | Required | Max Length |
-|-------|------|----------|------------|
-| `Id` | UUID (Guid) | Yes | - |
+| Column | Type | Required | Max Length |
+|--------|------|----------|------------|
+| `Id` | UUID | Yes (auto) | - |
 | `Name` | string | Yes | 200 |
 | `Email` | string | Yes | 200 |
-| `Address` | string | Yes | 500 |
+
+### Addresses Table
+
+| Column | Type | Required | Max Length |
+|--------|------|----------|------------|
+| `Id` | UUID | Yes (auto) | - |
+| `CustomerId` | UUID (FK) | Yes | - |
+| `Street` | string | Yes | 300 |
+| `City` | string | Yes | 100 |
+| `Country` | string | Yes | 100 |
+
+### Orders Table
+
+| Column | Type | Required | Max Length |
+|--------|------|----------|------------|
+| `Id` | UUID | Yes (auto) | - |
+| `CustomerId` | UUID (FK) | Yes | - |
+| `ProductName` | string | Yes | 200 |
+| `Quantity` | int | Yes | - |
+| `Price` | decimal | Yes | (18,2) |
+| `OrderDate` | DateTime | Yes | - |
+
+### Relationships
+
+- **Customer → Addresses:** One-to-Many (cascade delete)
+- **Customer → Orders:** One-to-Many (cascade delete)
 
 ---
 
@@ -79,7 +92,7 @@ Base URL: `https://customerexcelapi-production.up.railway.app`
 
 ### POST `/api/customers/import`
 
-Upload an Excel file (.xlsx) to import customers into the database.
+Upload an Excel file (.xlsx) to import customers with addresses and orders.
 
 #### Request
 
@@ -92,21 +105,37 @@ Upload an Excel file (.xlsx) to import customers into the database.
 
 #### Excel File Format
 
-The Excel file must have a **header row** (row 1) with column names matching the model fields. Column names are **case-insensitive**.
+The Excel file must have a **header row** (row 1) with column names. Column names are **case-insensitive**. All columns are optional - the API handles what's provided.
 
-| Column Header | Maps To | Required |
-|---------------|---------|----------|
-| `Name` | Customer.Name | Yes |
-| `Email` | Customer.Email | Yes |
-| `Address` | Customer.Address | Yes |
-| `Id` | Customer.Id | Optional (auto-generated if omitted) |
+**Columns mapping:**
+
+| Excel Header | Maps To Table | Maps To Column | Required |
+|-------------|--------------|----------------|----------|
+| `Name` | Customers | Name | Yes |
+| `Email` | Customers | Email | Yes |
+| `Street` | Addresses | Street | No |
+| `City` | Addresses | City | No |
+| `Country` | Addresses | Country | No |
+| `ProductName` | Orders | ProductName | No |
+| `Quantity` | Orders | Quantity | No |
+| `Price` | Orders | Price | No |
+| `OrderDate` | Orders | OrderDate | No |
 
 **Example Excel layout:**
 
-| Name | Email | Address |
-|------|-------|---------|
-| Ahmed | ahmed@test.com | Cairo |
-| Sara | sara@test.com | Alex |
+| Name | Email | Street | City | Country | Product Name | Quantity | Price | Order Date |
+|------|-------|--------|------|---------|-------------|----------|-------|------------|
+| Ahmed | ahmed@test.com | 10 Nile St | Cairo | Egypt | Laptop | 2 | 1500.50 | 2026-01-15 |
+| Ahmed | ahmed@test.com | 10 Nile St | Cairo | Egypt | Mouse | 5 | 25.00 | 2026-02-20 |
+| Sara | sara@test.com | 5 Sea St | Alex | Egypt | Keyboard | 1 | 75.00 | 2026-03-10 |
+| Mohamed | mohamed@test.com | 20 Mountain Rd | Giza | Egypt | Monitor | 3 | 500.00 | 2026-04-05 |
+
+**How Import Works:**
+
+- Rows with the same Name+Email are treated as the **same customer** (deduplicated)
+- Addresses are deduplicated per customer (same Street+City+Country = one address)
+- Each row with a ProductName creates a **new order**
+- In the example above: 3 Customers, 3 Addresses, 4 Orders = 10 database records
 
 #### Response
 
@@ -114,24 +143,17 @@ The Excel file must have a **header row** (row 1) with column names matching the
 
 ```json
 {
-  "totalRows": 3,
-  "inserted": 3,
-  "durationMs": 220
+  "totalRows": 4,
+  "inserted": 7,
+  "durationMs": 412
 }
 ```
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `totalRows` | int | Total rows parsed from the Excel file |
-| `inserted` | int | Number of rows inserted into the database |
-| `durationMs` | long | Time taken for the operation in milliseconds |
-
-**Error Responses:**
-
-| Status | Body | Cause |
-|--------|------|-------|
-| `400` | `{"error": "No file uploaded."}` | No file or empty file sent |
-| `500` | `{"error": "..."}` | Server error (corrupt file, DB error, etc.) |
+| `totalRows` | int | Total rows parsed from Excel |
+| `inserted` | int | Total records inserted (customers + addresses + orders) |
+| `durationMs` | long | Operation time in milliseconds |
 
 #### cURL Example
 
@@ -161,7 +183,7 @@ async function importCustomers(file) {
   }
 
   const result = await response.json();
-  console.log(`Imported ${result.inserted} of ${result.totalRows} rows in ${result.durationMs}ms`);
+  console.log(`Imported ${result.inserted} records in ${result.durationMs}ms`);
   return result;
 }
 
@@ -170,7 +192,7 @@ document.getElementById('fileInput').addEventListener('change', async (e) => {
   const file = e.target.files[0];
   if (file) {
     const result = await importCustomers(file);
-    alert(`Successfully imported ${result.inserted} customers!`);
+    alert(`Successfully imported ${result.inserted} records!`);
   }
 });
 ```
@@ -179,7 +201,7 @@ document.getElementById('fileInput').addEventListener('change', async (e) => {
 
 ### POST `/api/customers/export`
 
-Export customers from the database as an Excel file (.xlsx). Supports dynamic column selection.
+Export customers as Excel file (.xlsx) with **dynamic column selection**. The frontend can request any combination of columns from any table.
 
 #### Request
 
@@ -187,26 +209,64 @@ Export customers from the database as an Excel file (.xlsx). Supports dynamic co
 
 ```json
 {
-  "columns": ["Name", "Email", "Address"]
+  "columns": ["Name", "City"]
 }
 ```
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `columns` | string[] | Yes | List of column names to include in the export |
+| `columns` | string[] | Yes | Column names to include in export |
 
 #### Available Columns
 
+**From Customers:**
+
 | Column Name | Description |
 |-------------|-------------|
-| `Id` | Customer UUID |
 | `Name` | Customer name |
 | `Email` | Customer email |
-| `Address` | Customer address |
 
-- Column names are **case-insensitive**
-- Invalid/unknown columns are **silently ignored**
-- If empty array or no valid columns provided, returns empty Excel file
+**From Addresses:**
+
+| Column Name | Description |
+|-------------|-------------|
+| `Street` | Street address |
+| `City` | City name |
+| `Country` | Country name |
+
+**From Orders:**
+
+| Column Name | Description |
+|-------------|-------------|
+| `ProductName` | Product name |
+| `Quantity` | Order quantity |
+| `Price` | Unit price |
+| `OrderDate` | Order date (YYYY-MM-DD) |
+
+#### Dynamic Column Selection Examples
+
+The API **automatically JOINs only the required tables** based on requested columns:
+
+```json
+// Only customer info → Queries Customers table only
+{"columns": ["Name"]}
+
+// Customer + address → Queries Customers + Addresses
+{"columns": ["Name", "City"]}
+
+// Customer + orders → Queries Customers + Orders
+{"columns": ["Name", "ProductName", "Price"]}
+
+// Everything → Queries all 3 tables
+{"columns": ["Name", "Email", "Street", "City", "Country", "ProductName", "Quantity", "Price", "OrderDate"]}
+```
+
+| Columns Requested | Tables Joined |
+|-------------------|---------------|
+| Name, Email | Customers only |
+| Name, Email, Street, City, Country | Customers + Addresses |
+| Name, Email, ProductName, Quantity, Price, OrderDate | Customers + Orders |
+| All columns | Customers + Addresses + Orders |
 
 #### Response
 
@@ -216,49 +276,70 @@ Export customers from the database as an Excel file (.xlsx). Supports dynamic co
 - **Content-Disposition:** `attachment; filename=customers.xlsx`
 - **Body:** Binary Excel file (.xlsx)
 
-#### cURL Example
+#### cURL Examples
 
 ```bash
+# Export customer names only
 curl -X POST https://customerexcelapi-production.up.railway.app/api/customers/export \
   -H "Content-Type: application/json" \
-  -d '{"columns": ["Name", "Email", "Address"]}' \
-  --output customers.xlsx
+  -d '{"columns": ["Name"]}' \
+  --output names.xlsx
+
+# Export customers with cities
+curl -X POST https://customerexcelapi-production.up.railway.app/api/customers/export \
+  -H "Content-Type: application/json" \
+  -d '{"columns": ["Name", "City"]}' \
+  --output customers_cities.xlsx
+
+# Export all data
+curl -X POST https://customerexcelapi-production.up.railway.app/api/customers/export \
+  -H "Content-Type: application/json" \
+  -d '{"columns": ["Name", "Email", "Street", "City", "Country", "ProductName", "Quantity", "Price", "OrderDate"]}' \
+  --output full_export.xlsx
 ```
 
-#### JavaScript Example
+#### JavaScript Examples
 
 ```javascript
-async function exportCustomers(columns = ['Name', 'Email', 'Address']) {
+// Export only customer names
+async function exportNames() {
   const response = await fetch(
     'https://customerexcelapi-production.up.railway.app/api/customers/export',
     {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ columns }),
+      body: JSON.stringify({ columns: ['Name'] }),
     }
   );
 
-  if (!response.ok) {
-    const error = await response.json();
-    throw new Error(error.error);
-  }
-
-  // Download the file
   const blob = await response.blob();
   const url = window.URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = 'customers.xlsx';
-  document.body.appendChild(a);
+  a.download = 'names.xlsx';
   a.click();
-  a.remove();
   window.URL.revokeObjectURL(url);
 }
 
-// Usage
-exportCustomers(['Name', 'Email']);       // Export only Name and Email
-exportCustomers(['Name', 'Email', 'Address']); // Export all fields
-exportCustomers(['Id', 'Name']);           // Export Id and Name
+// Export customers with their cities
+async function exportWithCities() {
+  const response = await fetch(
+    'https://customerexcelapi-production.up.railway.app/api/customers/export',
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ columns: ['Name', 'Email', 'City'] }),
+    }
+  );
+
+  const blob = await response.blob();
+  const url = window.URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'customers_with_cities.xlsx';
+  a.click();
+  window.URL.revokeObjectURL(url);
+}
 ```
 
 ---
@@ -278,9 +359,10 @@ exportCustomers(['Id', 'Name']);           // Export Id and Name
         .section { border: 1px solid #ddd; padding: 20px; margin: 20px 0; border-radius: 8px; }
         button { padding: 10px 20px; margin: 5px; cursor: pointer; border: none; border-radius: 4px; background: #007bff; color: white; }
         button:hover { background: #0056b3; }
-        .result { margin-top: 10px; padding: 10px; background: #f8f9fa; border-radius: 4px; }
+        .result { margin-top: 10px; padding: 10px; border-radius: 4px; }
         .error { background: #f8d7da; color: #721c24; }
         .success { background: #d4edda; color: #155724; }
+        label { margin-right: 15px; }
     </style>
 </head>
 <body>
@@ -289,7 +371,7 @@ exportCustomers(['Id', 'Name']);           // Export Id and Name
     <!-- Import Section -->
     <div class="section">
         <h2>Import Customers</h2>
-        <p>Upload an Excel file (.xlsx) with columns: Name, Email, Address</p>
+        <p>Upload Excel with columns: Name, Email, Street, City, Country, ProductName, Quantity, Price, OrderDate</p>
         <input type="file" id="fileInput" accept=".xlsx" />
         <button onclick="handleImport()">Import</button>
         <div id="importResult"></div>
@@ -298,10 +380,19 @@ exportCustomers(['Id', 'Name']);           // Export Id and Name
     <!-- Export Section -->
     <div class="section">
         <h2>Export Customers</h2>
-        <label><input type="checkbox" value="Id" class="col-check"> Id</label>
+        <p>Select columns to export (any combination from any table):</p>
+        <h4>Customers:</h4>
         <label><input type="checkbox" value="Name" class="col-check" checked> Name</label>
         <label><input type="checkbox" value="Email" class="col-check" checked> Email</label>
-        <label><input type="checkbox" value="Address" class="col-check" checked> Address</label>
+        <h4>Addresses:</h4>
+        <label><input type="checkbox" value="Street" class="col-check"> Street</label>
+        <label><input type="checkbox" value="City" class="col-check"> City</label>
+        <label><input type="checkbox" value="Country" class="col-check"> Country</label>
+        <h4>Orders:</h4>
+        <label><input type="checkbox" value="ProductName" class="col-check"> Product Name</label>
+        <label><input type="checkbox" value="Quantity" class="col-check"> Quantity</label>
+        <label><input type="checkbox" value="Price" class="col-check"> Price</label>
+        <label><input type="checkbox" value="OrderDate" class="col-check"> Order Date</label>
         <br><br>
         <button onclick="handleExport()">Export to Excel</button>
         <div id="exportResult"></div>
@@ -334,12 +425,10 @@ exportCustomers(['Id', 'Name']);           // Export Id and Name
 
                 const data = await response.json();
 
-                if (!response.ok) {
-                    throw new Error(data.error || 'Import failed');
-                }
+                if (!response.ok) throw new Error(data.error || 'Import failed');
 
                 resultDiv.className = 'result success';
-                resultDiv.textContent = `Successfully imported ${data.inserted} of ${data.totalRows} rows in ${data.durationMs}ms`;
+                resultDiv.textContent = `Imported ${data.inserted} records from ${data.totalRows} rows in ${data.durationMs}ms`;
             } catch (err) {
                 resultDiv.className = 'result error';
                 resultDiv.textContent = `Error: ${err.message}`;
@@ -383,7 +472,7 @@ exportCustomers(['Id', 'Name']);           // Export Id and Name
                 window.URL.revokeObjectURL(url);
 
                 resultDiv.className = 'result success';
-                resultDiv.textContent = 'Download started successfully!';
+                resultDiv.textContent = `Downloaded with ${columns.length} columns`;
             } catch (err) {
                 resultDiv.className = 'result error';
                 resultDiv.textContent = `Error: ${err.message}`;
@@ -397,18 +486,38 @@ exportCustomers(['Id', 'Name']);           // Export Id and Name
 ### React Example
 
 ```jsx
+import { useState } from 'react';
+
 const API_BASE = 'https://customerexcelapi-production.up.railway.app/api/customers';
 
+const ALL_COLUMNS = [
+  { name: 'Name', table: 'Customers' },
+  { name: 'Email', table: 'Customers' },
+  { name: 'Street', table: 'Addresses' },
+  { name: 'City', table: 'Addresses' },
+  { name: 'Country', table: 'Addresses' },
+  { name: 'ProductName', table: 'Orders' },
+  { name: 'Quantity', table: 'Orders' },
+  { name: 'Price', table: 'Orders' },
+  { name: 'OrderDate', table: 'Orders' },
+];
+
 function CustomerManager() {
-  const [importing, setImporting] = useState(false);
-  const [exporting, setExporting] = useState(false);
+  const [selected, setSelected] = useState(['Name', 'Email']);
   const [message, setMessage] = useState(null);
+  const [loading, setLoading] = useState(false);
+
+  const toggleColumn = (col) => {
+    setSelected(prev =>
+      prev.includes(col) ? prev.filter(c => c !== col) : [...prev, col]
+    );
+  };
 
   const handleImport = async (e) => {
     const file = e.target.files[0];
     if (!file) return;
 
-    setImporting(true);
+    setLoading(true);
     const formData = new FormData();
     formData.append('file', file);
 
@@ -416,23 +525,29 @@ function CustomerManager() {
       const res = await fetch(`${API_BASE}/import`, { method: 'POST', body: formData });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
-      setMessage({ type: 'success', text: `Imported ${data.inserted}/${data.totalRows} rows in ${data.durationMs}ms` });
+      setMessage({ type: 'success', text: `Imported ${data.inserted} records in ${data.durationMs}ms` });
     } catch (err) {
       setMessage({ type: 'error', text: err.message });
     } finally {
-      setImporting(false);
+      setLoading(false);
     }
   };
 
-  const handleExport = async (columns) => {
-    setExporting(true);
+  const handleExport = async () => {
+    if (selected.length === 0) {
+      setMessage({ type: 'error', text: 'Select at least one column' });
+      return;
+    }
+
+    setLoading(true);
     try {
       const res = await fetch(`${API_BASE}/export`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ columns }),
+        body: JSON.stringify({ columns: selected }),
       });
       if (!res.ok) throw new Error((await res.json()).error);
+
       const blob = await res.blob();
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
@@ -440,78 +555,104 @@ function CustomerManager() {
       a.download = 'customers.xlsx';
       a.click();
       URL.revokeObjectURL(url);
+
+      setMessage({ type: 'success', text: `Exported ${selected.length} columns` });
     } catch (err) {
       setMessage({ type: 'error', text: err.message });
     } finally {
-      setExporting(false);
+      setLoading(false);
     }
   };
 
   return (
-    <div>
-      <input type="file" accept=".xlsx" onChange={handleImport} disabled={importing} />
-      <button onClick={() => handleExport(['Name', 'Email', 'Address'])} disabled={exporting}>
-        Export All
+    <div style={{ maxWidth: 600, margin: '40px auto' }}>
+      <h2>Import</h2>
+      <input type="file" accept=".xlsx" onChange={handleImport} disabled={loading} />
+
+      <h2>Export</h2>
+      {ALL_COLUMNS.map(col => (
+        <label key={col.name} style={{ marginRight: 15 }}>
+          <input
+            type="checkbox"
+            checked={selected.includes(col.name)}
+            onChange={() => toggleColumn(col.name)}
+          />
+          {col.name} <small>({col.table})</small>
+        </label>
+      ))}
+      <br /><br />
+      <button onClick={handleExport} disabled={loading}>
+        Export Selected Columns
       </button>
-      {message && <p className={message.type}>{message.text}</p>}
+
+      {message && <p style={{ color: message.type === 'error' ? 'red' : 'green' }}>{message.text}</p>}
     </div>
   );
 }
+
+export default CustomerManager;
 ```
 
 ---
 
 ## Error Handling
 
-All error responses follow this format:
+| Status | Meaning | Example |
+|--------|---------|---------|
+| `200` | Success | Import/Export completed |
+| `400` | Bad request | No file uploaded |
+| `500` | Server error | DB connection issue, corrupt file |
+
+Error response format:
 
 ```json
 {
   "error": "Primary error message",
-  "inner": "Inner exception message (if any)",
-  "stack": "Stack trace (development only)"
+  "inner": "Inner exception message (if any)"
 }
 ```
 
-| Status | Meaning |
-|--------|---------|
-| `200` | Success |
-| `400` | Bad request (no file, invalid input) |
-| `500` | Server error (DB connection, corrupt file, etc.) |
-
 ---
 
-## Performance Notes
+## Project Structure
 
-- **Import** uses Npgsql binary `COPY` protocol for high-performance bulk inserts (not individual `INSERT` statements)
-- **Export** uses dynamic LINQ expression trees for efficient column projection (no unnecessary data transfer)
-- File size limit is **50 MB**
-- Excel parsing uses **ClosedXML** (OpenXML-based, no Excel installation required)
-
----
-
-## Environment Variables (Railway)
-
-| Variable | Description |
-|----------|-------------|
-| `ConnectionStrings__DefaultConnection` | PostgreSQL connection string |
-| `ASPNETCORE_ENVIRONMENT` | `Production` or `Development` |
-| `WEBSITES_PORT` | `8080` (if using Azure App Service) |
+```
+CustomerExcelApi/
+├── Controllers/
+│   └── CustomersController.cs
+├── Data/
+│   ├── AppDbContext.cs
+│   └── Configurations/
+│       └── CustomerConfiguration.cs
+├── Entities/
+│   ├── Customer.cs
+│   ├── Address.cs
+│   └── Order.cs
+├── Features/
+│   └── Customers/
+│       ├── Commands/ImportCustomers/
+│       ├── DTOs/
+│       └── Queries/ExportCustomers/
+├── Interfaces/
+├── Repositories/
+│   ├── CustomerBulkRepository.cs
+│   └── CustomerReadRepository.cs
+├── Services/
+│   └── ExcelService.cs
+├── Dockerfile
+└── Program.cs
+```
 
 ---
 
 ## Local Development
 
 ```bash
-# Clone
 git clone https://github.com/Mohamed-ehab-mohy/CustomerExcelApi.git
 cd CustomerExcelApi
-
-# Run
 dotnet run
 
-# Open Swagger
-# http://localhost:5247/swagger
+# Swagger: http://localhost:5247/swagger
 ```
 
 Requires `appsettings.Development.json` with your local database connection string (not committed to git).
