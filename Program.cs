@@ -52,24 +52,18 @@ using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
     db.Database.ExecuteSqlRaw(@"
-        DO $$
-        BEGIN
-            IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='Customers' AND column_name='Address') THEN
-                DROP TABLE IF EXISTS ""Orders"" CASCADE;
-                DROP TABLE IF EXISTS ""Addresses"" CASCADE;
-                DROP TABLE IF EXISTS ""Customers"" CASCADE;
-                DROP TABLE IF EXISTS ""__EFMigrationsHistory"" CASCADE;
-            END IF;
-        END $$;
+        DROP TABLE IF EXISTS ""Orders"" CASCADE;
+        DROP TABLE IF EXISTS ""Addresses"" CASCADE;
+        DROP TABLE IF EXISTS ""Customers"" CASCADE;
 
-        CREATE TABLE IF NOT EXISTS ""Customers"" (
+        CREATE TABLE ""Customers"" (
             ""Id"" uuid NOT NULL,
             ""Name"" character varying(200) NOT NULL,
             ""Email"" character varying(200) NOT NULL,
             CONSTRAINT ""PK_Customers"" PRIMARY KEY (""Id"")
         );
 
-        CREATE TABLE IF NOT EXISTS ""Addresses"" (
+        CREATE TABLE ""Addresses"" (
             ""Id"" uuid NOT NULL,
             ""CustomerId"" uuid NOT NULL,
             ""Street"" character varying(300) NOT NULL,
@@ -80,7 +74,7 @@ using (var scope = app.Services.CreateScope())
                 REFERENCES ""Customers"" (""Id"") ON DELETE CASCADE
         );
 
-        CREATE TABLE IF NOT EXISTS ""Orders"" (
+        CREATE TABLE ""Orders"" (
             ""Id"" uuid NOT NULL,
             ""CustomerId"" uuid NOT NULL,
             ""ProductName"" character varying(200) NOT NULL,
