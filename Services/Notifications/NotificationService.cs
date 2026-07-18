@@ -20,25 +20,30 @@ public sealed class NotificationService : INotificationService
 
     public async Task SendAsync(NotificationMessage message, CancellationToken cancellationToken = default)
     {
-        try
-        {
-            var sent = await _signalR.SendAsync(message, cancellationToken);
-            if (sent) return;
-
-            _logger.LogDebug("SignalR failed for User {UserId}, falling back to WebPush", message.UserId);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogWarning(ex, "SignalR failed for User {UserId}, falling back to WebPush", message.UserId);
-        }
+        var signalROk = false;
+        var webPushOk = false;
 
         try
         {
-            await _webPush.SendAsync(message, cancellationToken);
+            signalROk = await _signalR.SendAsync(message, cancellationToken);
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Both SignalR and WebPush failed for User {UserId}", message.UserId);
+            _logger.LogWarning(ex, "SignalR failed for User {UserId}", message.UserId);
+        }
+
+        try
+        {
+            webPushOk = await _webPush.SendAsync(message, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "WebPush failed for User {UserId}", message.UserId);
+        }
+
+        if (!signalROk && !webPushOk)
+        {
+            _logger.LogError("Both SignalR and WebPush failed for User {UserId}, Reminder {ReminderId}", message.UserId, message.ReminderId);
         }
     }
 }
